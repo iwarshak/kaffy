@@ -129,15 +129,25 @@ defmodule Kaffy.ResourceQuery do
           Enum.reduce(search_fields, query, fn
             {association, fields}, q ->
               query = from(s in q, join: a in assoc(s, ^association))
+              case Kaffy.Utils.repo().__adapter__() do
+                Ecto.Adapters.Postgres ->
+                  Enum.reduce(fields, query, fn f, current_query ->
+                    from([..., r] in current_query,
+                      or_where: ilike(type(field(r, ^f), :string), ^term)
+                    )
+                  end)
 
-              Enum.reduce(fields, query, fn f, current_query ->
-                from([..., r] in current_query,
-                  or_where: ilike(type(field(r, ^f), :string), ^term)
-                )
-              end)
-
+                adapter when adapter in [Ecto.Adapters.MyXQL, Ecto.Adapters.MySQL] ->
+                  require IEx; IEx.pry
+              end
             f, q ->
-              from(s in q, or_where: ilike(type(field(s, ^f), :string), ^term))
+              case Kaffy.Utils.repo().__adapter__() do
+                Ecto.Adapters.Postgres ->
+                  from(s in q, or_where: ilike(type(field(s, ^f), :string), ^term))
+
+                adapter when adapter in [Ecto.Adapters.MyXQL, Ecto.Adapters.MySQL] ->
+                  from(s in q, or_where: fragment("? LIKE (?)", type(field(s, ^f), :string), ^("%" <> term <> "%")))
+              end
           end)
       end
 
